@@ -18,6 +18,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@vercel/blob": "^2.4.0",
     "archiver": "^8.0.0",
     "fflate": "^0.8.3",
     "next": "^15.5.18",

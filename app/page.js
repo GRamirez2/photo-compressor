@@ -17,7 +17,7 @@ export default function HomePage() {
         <h1>Compress and convert images for your website</h1>
         <p className="hero-copy">
           Upload one image or a batch, choose the target format, and cap the width or longest edge.
-          We&apos;ll compress the images and provide direct download links.
+          Files upload to Blob first, then we compress and return direct Blob download links.
         </p>
       </section>
 

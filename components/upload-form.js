@@ -2,30 +2,32 @@
 
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { upload } from '@vercel/blob/client';
 
 const initialState = {
   error: null,
   results: [],
 };
 
-function SubmitButton() {
+function SubmitButton({ disabled }) {
   const { pending } = useFormStatus();
+  const isDisabled = disabled || pending;
 
   return (
-    <button className="submit-button" type="submit" disabled={pending}>
-      {pending ? 'Processing images...' : 'Convert images'}
+    <button className="submit-button" type="submit" disabled={isDisabled}>
+      {pending ? 'Processing images...' : disabled ? 'Waiting for ready uploads...' : 'Convert images'}
     </button>
   );
 }
-
-const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4 MB — Vercel serverless hard limit is 4.5 MB
 
 export default function UploadForm({ action, formatOptions }) {
   const [state, formAction] = useActionState(action, initialState);
   const [showSizingHelp, setShowSizingHelp] = useState(false);
   const [selectedFilesLabel, setSelectedFilesLabel] = useState('No files selected yet.');
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [sizeError, setSizeError] = useState(null);
+  const [sourceUploads, setSourceUploads] = useState([]);
+  const [isUploadingSources, setIsUploadingSources] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [shouldRenameImages, setShouldRenameImages] = useState(false);
   const [shouldCreateMobileImages, setShouldCreateMobileImages] = useState(false);
@@ -56,14 +58,6 @@ export default function UploadForm({ action, formatOptions }) {
       const transfer = new DataTransfer();
       nextFiles.forEach((file) => transfer.items.add(file));
       fileInputRef.current.files = transfer.files;
-    }
-
-    const totalBytes = nextFiles.reduce((sum, f) => sum + f.size, 0);
-    if (totalBytes > MAX_UPLOAD_BYTES) {
-      const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
-      setSizeError(`Total upload size is ${totalMB} MB, which exceeds the 4 MB limit. Remove some files or compress them before uploading.`);
-    } else {
-      setSizeError(null);
     }
 
     setSelectedFiles(nextFiles);
@@ -119,6 +113,58 @@ export default function UploadForm({ action, formatOptions }) {
   }
 
   useEffect(() => {
+    let isCancelled = false;
+
+    async function uploadSources() {
+      if (selectedFiles.length === 0) {
+        setSourceUploads([]);
+        setUploadError(null);
+        setIsUploadingSources(false);
+        return;
+      }
+
+      setIsUploadingSources(true);
+      setUploadError(null);
+
+      try {
+        const uploaded = [];
+
+        for (const file of selectedFiles) {
+          const blob = await upload(file.name, file, {
+            access: 'public',
+            handleUploadUrl: '/api/upload',
+            clientPayload: JSON.stringify({ fileName: file.name }),
+          });
+
+          uploaded.push({
+            fileName: file.name,
+            url: blob.url,
+          });
+        }
+
+        if (!isCancelled) {
+          setSourceUploads(uploaded);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setSourceUploads([]);
+          setUploadError(error instanceof Error ? error.message : 'Unable to upload one or more images to Blob.');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsUploadingSources(false);
+        }
+      }
+    }
+
+    uploadSources();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedFiles]);
+
+  useEffect(() => {
     if (!showSizingHelp) {
       return undefined;
     }
@@ -137,23 +183,11 @@ export default function UploadForm({ action, formatOptions }) {
   }, [showSizingHelp]);
 
   useEffect(() => {
-    // Revoke any previously created blob URLs before creating new ones.
-    Object.values(resultDataRef.current).forEach(({ blobUrl }) => URL.revokeObjectURL(blobUrl));
     resultDataRef.current = {};
 
     const items = state.results.map((result) => {
-      const { data, ...displayData } = result;
-
-      if (data) {
-        const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
-        const mimeType = result.format === 'jpeg' ? 'image/jpeg' : `image/${result.format}`;
-        const blob = new Blob([bytes], { type: mimeType });
-        const blobUrl = URL.createObjectURL(blob);
-        resultDataRef.current[result.downloadName] = { blobUrl, bytes };
-        return { ...displayData, blobUrl };
-      }
-
-      return displayData;
+      resultDataRef.current[result.downloadName] = { url: result.url };
+      return { ...result, blobUrl: result.url };
     });
 
     setResultItems(items);
@@ -161,7 +195,6 @@ export default function UploadForm({ action, formatOptions }) {
   }, [state.results]);
 
   function handleClearResults() {
-    Object.values(resultDataRef.current).forEach(({ blobUrl }) => URL.revokeObjectURL(blobUrl));
     resultDataRef.current = {};
     setResultItems([]);
     setClearError(null);
@@ -179,14 +212,21 @@ export default function UploadForm({ action, formatOptions }) {
       const { zip } = await import('fflate');
       const files = {};
 
-      for (const [name, { bytes }] of Object.entries(resultDataRef.current)) {
-        files[name] = bytes;
+      for (const [name, { url }] of Object.entries(resultDataRef.current)) {
+        const response = await fetch(url, { cache: 'no-store' });
+
+        if (!response.ok) {
+          throw new Error('Unable to download one or more generated files.');
+        }
+
+        files[name] = new Uint8Array(await response.arrayBuffer());
       }
 
       zip(files, (err, data) => {
         setIsDownloadingZip(false);
 
         if (err) {
+          setClearError('Unable to build ZIP archive. Try downloading files individually.');
           return;
         }
 
@@ -194,25 +234,35 @@ export default function UploadForm({ action, formatOptions }) {
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = 'images.zip';
+        anchor.download = 'compressed-images.zip';
         document.body.appendChild(anchor);
         anchor.click();
         document.body.removeChild(anchor);
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       });
-    } catch {
+    } catch (error) {
+      setClearError(error instanceof Error ? error.message : 'Unable to create ZIP download.');
       setIsDownloadingZip(false);
     }
   }
 
   const canDownloadAll = resultItems.length > 0 && Object.keys(resultDataRef.current).length > 0;
+  const isSubmitDisabled =
+    selectedFiles.length === 0 ||
+    isUploadingSources ||
+    Boolean(uploadError) ||
+    sourceUploads.length !== selectedFiles.length;
 
   return (
     <section className="tool-grid">
       <form
         className="tool-panel"
         action={formAction}
-        onSubmit={(e) => { if (sizeError) e.preventDefault(); }}
+        onSubmit={(event) => {
+          if (isSubmitDisabled) {
+            event.preventDefault();
+          }
+        }}
       >
         <p className="section-label">Controls</p>
         <div className="sizing-help" ref={sizingHelpRef}>
@@ -303,8 +353,10 @@ export default function UploadForm({ action, formatOptions }) {
               {selectedFilesLabel}
             </span>
           </label>
-          <p className="hint">Select a single image or a batch of images. Max total upload size: 4 MB.</p>
-          {sizeError ? <p className="error-banner" role="alert">{sizeError}</p> : null}
+          <p className="hint">Select a single image or a batch of images.</p>
+          <p className="hint">Files upload directly to Blob first, so large batches avoid the server action upload limit.</p>
+          {isUploadingSources ? <p className="status-row">Uploading selected images to Blob...</p> : null}
+          {uploadError ? <p className="error-banner" role="alert">{uploadError}</p> : null}
           {selectedFiles.length > 0 ? (
             <ul className="selected-files-list" aria-label="Selected images">
               {selectedFiles.map((file, index) => (
@@ -327,6 +379,14 @@ export default function UploadForm({ action, formatOptions }) {
               ))}
             </ul>
           ) : null}
+          {sourceUploads.map((uploadItem, index) => (
+            <input
+              key={`${uploadItem.fileName}-${uploadItem.url}-${index}`}
+              type="hidden"
+              name="sourceBlobUrls"
+              value={uploadItem.url}
+            />
+          ))}
         </div>
 
         <div className="field-grid">
@@ -400,7 +460,7 @@ export default function UploadForm({ action, formatOptions }) {
         </div>
 
         <div className="submit-row">
-          <SubmitButton />
+          <SubmitButton disabled={isSubmitDisabled} />
           <p className="status-row">Formats supported: WebP, JPEG, PNG.</p>
         </div>
 

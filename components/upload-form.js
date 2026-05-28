@@ -18,11 +18,14 @@ function SubmitButton() {
   );
 }
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4 MB — Vercel serverless hard limit is 4.5 MB
+
 export default function UploadForm({ action, formatOptions }) {
   const [state, formAction] = useActionState(action, initialState);
   const [showSizingHelp, setShowSizingHelp] = useState(false);
   const [selectedFilesLabel, setSelectedFilesLabel] = useState('No files selected yet.');
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [sizeError, setSizeError] = useState(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [shouldRenameImages, setShouldRenameImages] = useState(false);
   const [shouldCreateMobileImages, setShouldCreateMobileImages] = useState(false);
@@ -53,6 +56,14 @@ export default function UploadForm({ action, formatOptions }) {
       const transfer = new DataTransfer();
       nextFiles.forEach((file) => transfer.items.add(file));
       fileInputRef.current.files = transfer.files;
+    }
+
+    const totalBytes = nextFiles.reduce((sum, f) => sum + f.size, 0);
+    if (totalBytes > MAX_UPLOAD_BYTES) {
+      const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
+      setSizeError(`Total upload size is ${totalMB} MB, which exceeds the 4 MB limit. Remove some files or compress them before uploading.`);
+    } else {
+      setSizeError(null);
     }
 
     setSelectedFiles(nextFiles);
@@ -179,7 +190,11 @@ export default function UploadForm({ action, formatOptions }) {
 
   return (
     <section className="tool-grid">
-      <form className="tool-panel" action={formAction}>
+      <form
+        className="tool-panel"
+        action={formAction}
+        onSubmit={(e) => { if (sizeError) e.preventDefault(); }}
+      >
         <p className="section-label">Controls</p>
         <div className="sizing-help" ref={sizingHelpRef}>
           <button
@@ -269,7 +284,8 @@ export default function UploadForm({ action, formatOptions }) {
               {selectedFilesLabel}
             </span>
           </label>
-          <p className="hint">Select a single image or a batch of images.</p>
+          <p className="hint">Select a single image or a batch of images. Max total upload size: 4 MB.</p>
+          {sizeError ? <p className="error-banner" role="alert">{sizeError}</p> : null}
           {selectedFiles.length > 0 ? (
             <ul className="selected-files-list" aria-label="Selected images">
               {selectedFiles.map((file, index) => (

@@ -1,0 +1,21 @@
+{
+  "name": "photo-compressor",
+  "version": "1.0.0",
+  "description": "Node app that takes photos and converts them to WebP format",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "image",
+    "webp",
+    "compression",
+    "sharp"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "sharp": "^0.33.0"
+  }
+}
+

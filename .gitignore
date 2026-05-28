@@ -137,3 +137,11 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Project-local and generated artifacts
+.DS_Store
+.agents/
+tmp/
+public/generated/
+*.code-workspace
+skills-lock.json

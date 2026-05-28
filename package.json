@@ -1,0 +1,34 @@
+{
+  "name": "photo-compressor",
+  "version": "1.0.0",
+  "description": "Next.js image conversion app powered by React Server Components and Sharp",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "keywords": [
+    "image",
+    "webp",
+    "compression",
+    "sharp"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "next": "^15.5.18",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "sharp": "^0.34.0"
+  },
+  "overrides": {
+    "sharp": "^0.34.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.18"
+  }
+}

@@ -1,6 +1,6 @@
 # photo-compressor
 
-Node app that takes photos and converts them to WebP format using Sharp.
+Next.js app that converts and resizes uploaded images with Sharp using React Server Components and a server action.
 
 ## Installation
 
@@ -8,42 +8,40 @@ Node app that takes photos and converts them to WebP format using Sharp.
 npm install
 ```
 
-## Usage
-
-### Command Line
-
-Convert one or more images:
+## Development
 
 ```bash
-node index.js ./images/photo1.jpg ./images/photo2.png ./images/photo3.jpeg
+npm run dev
 ```
 
-### Programmatic Usage
-
-```javascript
-const { convertToWebP } = require('./index.js');
-
-// Convert array of images
-const imagePaths = [
-  './images/photo1.jpg',
-  './images/photo2.png',
-  './images/photo3.jpeg'
-];
-
-// Basic usage
-await convertToWebP(imagePaths);
-
-// With options
-await convertToWebP(imagePaths, {
-  quality: 90,        // WebP quality (1-100), default: 80
-  outputDir: './output'  // Optional output directory
-});
-```
+Open `http://localhost:3000` and upload one or more images.
 
 ## Features
 
-- Converts multiple images in one operation
-- Configurable WebP quality
-- Optional output directory
-- Error handling with detailed error messages
-- Progress feedback during conversion
+- Batch upload support
+- Output formats: WebP, JPEG, PNG
+- Resize by max width or max longest edge
+- Server-side processing with Sharp
+- Download links and previews for processed files
+
+## Build
+
+```bash
+npm run build
+npm start
+```
+
+## Deploy to Vercel
+
+This project is ready for Vercel with the default Next.js settings.
+
+1. Push this repository to GitHub.
+2. Import the repo in Vercel.
+3. Keep Framework Preset as Next.js.
+4. Deploy.
+
+### Runtime storage behavior
+
+- Generated images are written to a temporary directory (`/tmp` on Vercel).
+- Downloads are served through API routes.
+- Files are short-lived and cleaned up automatically.

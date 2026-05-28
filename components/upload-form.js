@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 const initialState = {
@@ -32,10 +32,10 @@ export default function UploadForm({ action, formatOptions }) {
   const [resultItems, setResultItems] = useState([]);
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const [clearError, setClearError] = useState(null);
-  const [isClearing, startClearingTransition] = useTransition();
   const dragDepthRef = useRef(0);
   const fileInputRef = useRef(null);
   const sizingHelpRef = useRef(null);
+  const resultDataRef = useRef({});
 
   function updateSelectedFilesLabel(files) {
     if (!files || files.length === 0) {
@@ -137,56 +137,75 @@ export default function UploadForm({ action, formatOptions }) {
   }, [showSizingHelp]);
 
   useEffect(() => {
-    setResultItems(state.results);
+    // Revoke any previously created blob URLs before creating new ones.
+    Object.values(resultDataRef.current).forEach(({ blobUrl }) => URL.revokeObjectURL(blobUrl));
+    resultDataRef.current = {};
+
+    const items = state.results.map((result) => {
+      const { data, ...displayData } = result;
+
+      if (data) {
+        const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+        const mimeType = result.format === 'jpeg' ? 'image/jpeg' : `image/${result.format}`;
+        const blob = new Blob([bytes], { type: mimeType });
+        const blobUrl = URL.createObjectURL(blob);
+        resultDataRef.current[result.downloadName] = { blobUrl, bytes };
+        return { ...displayData, blobUrl };
+      }
+
+      return displayData;
+    });
+
+    setResultItems(items);
     setClearError(null);
   }, [state.results]);
 
   function handleClearResults() {
+    Object.values(resultDataRef.current).forEach(({ blobUrl }) => URL.revokeObjectURL(blobUrl));
+    resultDataRef.current = {};
+    setResultItems([]);
     setClearError(null);
-
-    startClearingTransition(async () => {
-      try {
-        const response = await fetch('/api/generated', {
-          method: 'DELETE',
-        });
-
-        const payload = await response.json();
-
-        if (!response.ok || payload?.error) {
-          setClearError(payload?.error || 'Unable to clear generated files.');
-          return;
-        }
-      } catch {
-        setClearError('Unable to clear generated files.');
-        return;
-      }
-
-      setResultItems([]);
-      syncSelectedFiles([]);
-    });
+    syncSelectedFiles([]);
   }
 
-  function handleDownloadAllClick() {
-    if (!downloadAllUrl || isDownloadingZip) {
+  async function handleDownloadAllClick() {
+    if (isDownloadingZip) {
       return;
     }
 
     setIsDownloadingZip(true);
 
-    // Keep feedback brief while the browser starts the file download request.
-    window.location.href = downloadAllUrl;
+    try {
+      const { zip } = await import('fflate');
+      const files = {};
 
-    window.setTimeout(() => {
+      for (const [name, { bytes }] of Object.entries(resultDataRef.current)) {
+        files[name] = bytes;
+      }
+
+      zip(files, (err, data) => {
+        setIsDownloadingZip(false);
+
+        if (err) {
+          return;
+        }
+
+        const blob = new Blob([data], { type: 'application/zip' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = 'images.zip';
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+    } catch {
       setIsDownloadingZip(false);
-    }, 2000);
+    }
   }
 
-  const activeBatchId = resultItems[0]?.batchId;
-  const allResultsFromSameBatch =
-    resultItems.length > 0 && resultItems.every((item) => item.batchId && item.batchId === activeBatchId);
-  const downloadAllUrl = allResultsFromSameBatch
-    ? `/api/generated/download?batchId=${encodeURIComponent(activeBatchId)}`
-    : null;
+  const canDownloadAll = resultItems.length > 0 && Object.keys(resultDataRef.current).length > 0;
 
   return (
     <section className="tool-grid">
@@ -394,7 +413,7 @@ export default function UploadForm({ action, formatOptions }) {
         {resultItems.length > 0 ? (
           <>
             <div className="results-toolbar">
-              {downloadAllUrl ? (
+              {canDownloadAll ? (
                 <button
                   type="button"
                   className="download-link"
@@ -409,9 +428,8 @@ export default function UploadForm({ action, formatOptions }) {
                 type="button"
                 className="clear-button"
                 onClick={handleClearResults}
-                disabled={isClearing}
               >
-                {isClearing ? 'Clearing...' : 'Clear'}
+                Clear
               </button>
             </div>
             <p className="results-summary">
@@ -419,7 +437,7 @@ export default function UploadForm({ action, formatOptions }) {
             </p>
             <div className="results-list">
               {resultItems.map((result) => (
-                <article className="result-card" key={result.downloadUrl}>
+                <article className="result-card" key={result.downloadName}>
                   <div className="result-body">
                     <h3>{result.downloadName}</h3>
                     <p className="result-meta">
@@ -431,7 +449,7 @@ export default function UploadForm({ action, formatOptions }) {
                       <br />
                       Size: {result.sizeLabel}
                     </p>
-                    <a className="download-link" href={result.downloadUrl}>
+                    <a className="download-link" href={result.blobUrl} download={result.downloadName}>
                       Download file
                     </a>
                   </div>

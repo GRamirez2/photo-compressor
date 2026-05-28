@@ -328,7 +328,6 @@ export default function UploadForm({ action, formatOptions }) {
             ref={fileInputRef}
             className="file-input"
             type="file"
-            name="images"
             accept="image/*"
             multiple
             required

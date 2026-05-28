@@ -22,7 +22,8 @@ Open `http://localhost:3000` and upload one or more images.
 - Output formats: WebP, JPEG, PNG
 - Resize by max width or max longest edge
 - Server-side processing with Sharp
-- Download links and previews for processed files
+- Direct-to-Blob uploads to bypass server action request size limits
+- Processed image downloads served from Vercel Blob URLs
 
 ## Build
 
@@ -42,6 +43,34 @@ This project is ready for Vercel with the default Next.js settings.
 
 ### Runtime storage behavior
 
-- Generated images are written to a temporary directory (`/tmp` on Vercel).
-- Downloads are served through API routes.
-- Files are short-lived and cleaned up automatically.
+- Source uploads are sent directly from the browser to Vercel Blob using `@vercel/blob/client`.
+- Converted outputs are written to Vercel Blob on the server with `@vercel/blob`.
+- The app returns Blob URLs for individual downloads and builds ZIP downloads client-side.
+
+### Required environment variables
+
+- `BLOB_READ_WRITE_TOKEN`
+
+### How to get `BLOB_READ_WRITE_TOKEN`
+
+1. Open your project in the Vercel dashboard.
+2. Go to **Storage** and create or connect a Blob store.
+3. Open the Blob store details and copy the **Read/Write token**.
+4. Add it to your project environment variables as `BLOB_READ_WRITE_TOKEN`.
+5. Pull the env vars locally:
+
+```bash
+vercel env pull .env.local --yes
+```
+
+For local development, `.env.local` should contain:
+
+```bash
+BLOB_READ_WRITE_TOKEN=your_read_write_token_here
+```
+
+### Store ID and Base URL notes
+
+- The Blob **Store ID is not the token**. Do not put the store ID in `BLOB_READ_WRITE_TOKEN`.
+- The Blob **Base URL is also not required** for this app's current SDK-based flow.
+- This app only requires `BLOB_READ_WRITE_TOKEN` for server-side Blob operations and upload token generation.

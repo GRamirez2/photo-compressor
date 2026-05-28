@@ -1,6 +1,7 @@
 'use server';
 
-import { processImages } from '../lib/image-processing';
+import { processBlobImages, processImages } from '../lib/image-processing';
+import { getSessionId } from '../lib/session';
 
 function toPositiveInteger(value) {
   const parsed = Number.parseInt(value ?? '', 10);
@@ -8,11 +9,16 @@ function toPositiveInteger(value) {
 }
 
 export async function convertImagesAction(previousState, formData) {
+  const sourceBlobUrls = formData
+    .getAll('sourceBlobUrls')
+    .map((value) => value?.toString().trim())
+    .filter(Boolean);
+
   const uploadedFiles = formData
     .getAll('images')
     .filter((entry) => entry instanceof File && entry.size > 0);
 
-  if (uploadedFiles.length === 0) {
+  if (sourceBlobUrls.length === 0 && uploadedFiles.length === 0) {
     return {
       error: 'Choose at least one image to convert.',
       results: [],
@@ -34,13 +40,18 @@ export async function convertImagesAction(previousState, formData) {
   }
 
   try {
-    const results = await processImages(uploadedFiles, {
+    const sessionId = await getSessionId({ createIfMissing: true });
+    const processingOptions = {
       format,
       maxLength,
       quality,
       mobileResizeEnabled,
       renameBase: renameEnabled ? renameBase : null,
-    });
+    };
+    const results =
+      sourceBlobUrls.length > 0
+        ? await processBlobImages(sourceBlobUrls, processingOptions, sessionId)
+        : await processImages(uploadedFiles, processingOptions, sessionId);
 
     return {
       error: null,

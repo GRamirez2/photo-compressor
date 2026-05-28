@@ -1,7 +1,6 @@
 'use server';
 
 import { processImages } from '../lib/image-processing';
-import { getSessionId } from '../lib/session';
 
 function toPositiveInteger(value) {
   const parsed = Number.parseInt(value ?? '', 10);
@@ -35,15 +34,13 @@ export async function convertImagesAction(previousState, formData) {
   }
 
   try {
-    const sessionId = await getSessionId({ createIfMissing: true });
-
     const results = await processImages(uploadedFiles, {
       format,
       maxLength,
       quality,
       mobileResizeEnabled,
       renameBase: renameEnabled ? renameBase : null,
-    }, sessionId);
+    });
 
     return {
       error: null,
